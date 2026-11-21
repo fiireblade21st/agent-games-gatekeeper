@@ -64,7 +64,7 @@ const server = http.createServer((req, res) => {
     if (body.length > 0) {
       try { envelope = JSON.parse(body); parsed = true; } catch { parsed = false; }
     }
-    const t = envelope && typeof envelope === 'object' ? (envelope.task || envelope) : null;
+    const t = envelope && typeof envelope === 'object' ? (envelope.input || envelope.task || envelope) : null;
     // A task is recognized by task_id OR taskId (the platform may use
     // camelCase); anything else signed is the preflight connectivity check.
     const hasId = (v) => v !== undefined && v !== null && v !== '';
@@ -94,6 +94,7 @@ const server = http.createServer((req, res) => {
           route: 'POST /agent', error: String(e.message || e), status: e.status || 500,
           keys: envObj ? Object.keys(envObj) : [],
           taskKeys: envObj && envObj.task && typeof envObj.task === 'object' ? Object.keys(envObj.task) : [],
+          inputKeys: envObj && envObj.input && typeof envObj.input === 'object' ? Object.keys(envObj.input) : [],
         }));
       } catch { /* logging must never break the response */ }
       return send(e.status || 500, { error: e.message || 'internal error' }, check.encoding);

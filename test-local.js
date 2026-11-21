@@ -208,6 +208,21 @@ async function main() {
     console.log(`${pass11 ? 'PASS' : 'FAIL'}  11 TASK_ID ONLY -> 400 missing field  [http=${r11.status}]`);
     if (!pass11) console.log('      response:', r11.body.slice(0, 300));
 
+    // 12. Real platform envelope shape (fields nested under `input`,
+    // metadata at top level) must decide like case 1.
+    const r12 = await post({
+      mode: 'practice', type: 'gatekeeper_task',
+      input: { ...BASE, task_id: 'gk_24_9d12', proof_tx: 'tx_input_012' },
+      task_id: 'gk_24_9d12', issued_at: '2026-11-21T11:00:00Z', deadline_at: '2026-11-21T11:01:00Z',
+    });
+    let json12 = null;
+    try { json12 = JSON.parse(r12.body); } catch { /* fall through */ }
+    const pass12 = r12.status === 200 && json12 && json12.decision === 'APPROVE'
+      && json12.reason_code === 'VALID_CONDITION' && validSig(r12);
+    if (!pass12) failures += 1;
+    console.log(`${pass12 ? 'PASS' : 'FAIL'}  12 INPUT-NESTED ENVELOPE -> APPROVE / VALID_CONDITION  [http=${r12.status} sig=${validSig(r12)}]`);
+    if (!pass12) console.log('      response:', r12.body.slice(0, 300));
+
     // 6. No-secret server must 401 everything (spawn a second server w/o env).
     const server2 = spawn(process.execPath, ['server.js'], {
       cwd: __dirname,
