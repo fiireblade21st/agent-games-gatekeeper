@@ -1,0 +1,9 @@
+node_modules/
+.env
+.env.*
+*.log
+proof*.json
+public*.json
+input*.json
+.DS_Store
+.vercel
