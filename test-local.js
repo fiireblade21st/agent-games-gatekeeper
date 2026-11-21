@@ -75,6 +75,23 @@ function post(bodyObj, { sign = true } = {}) {
   });
 }
 
+function postRaw(body, { sign = true } = {}) {
+  const headers = { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) };
+  if (sign) {
+    headers['x-agent-games-signature'] = crypto.createHmac('sha256', SECRET).update(body).digest('hex');
+  }
+  return new Promise((resolve, reject) => {
+    const req = http.request({ host: '127.0.0.1', port: PORT, path: '/agent', method: 'POST', headers }, (res) => {
+      let data = '';
+      res.on('data', (c) => { data += c; });
+      res.on('end', () => resolve({ status: res.statusCode, body: data }));
+    });
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
 async function main() {
   const server = spawn(process.execPath, ['server.js'], {
     cwd: __dirname,
@@ -129,6 +146,20 @@ async function main() {
     const pass5 = r5.status === 401;
     if (!pass5) failures += 1;
     console.log(`${pass5 ? 'PASS' : 'FAIL'}  5 UNSIGNED -> 401 fail-closed  [http=${r5.status}]`);
+
+    // 7. Signed empty body (platform preflight ping) must 200, not 400.
+    const r7 = await postRaw('');
+    const pass7 = r7.status === 200 && r7.body.includes('"preflight":true');
+    if (!pass7) failures += 1;
+    console.log(`${pass7 ? 'PASS' : 'FAIL'}  7 SIGNED EMPTY BODY (preflight) -> 200 preflight:true  [http=${r7.status}]`);
+    if (!pass7) console.log('      response:', r7.body.slice(0, 300));
+
+    // 8. Signed {} (preflight without task fields) must 200, not 400.
+    const r8 = await postRaw('{}');
+    const pass8 = r8.status === 200 && r8.body.includes('"preflight":true');
+    if (!pass8) failures += 1;
+    console.log(`${pass8 ? 'PASS' : 'FAIL'}  8 SIGNED {} (preflight) -> 200 preflight:true  [http=${r8.status}]`);
+    if (!pass8) console.log('      response:', r8.body.slice(0, 300));
 
     // 6. No-secret server must 401 everything (spawn a second server w/o env).
     const server2 = spawn(process.execPath, ['server.js'], {

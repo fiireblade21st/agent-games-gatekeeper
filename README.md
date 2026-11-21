@@ -103,10 +103,10 @@ vercel --prod         # first deploy; prints https://<project>.vercel.app
 vercel env add AGENT_GAMES_HMAC_SECRET production
 # paste the platform-generated secret (Agent Games dashboard -> Rotate Secret)
 vercel --prod         # redeploy with the env var
-curl https://<project>.vercel.app/api/agent   # expect {"ok":true,...}
+curl https://<project>.vercel.app/agent   # expect {"ok":true,...}
 ```
 
-Then register `https://<project>.vercel.app/api/agent` as the agent endpoint
+Then register `https://<project>.vercel.app/agent` as the agent endpoint
 in the Agent Games dashboard, run the signed preflight and at least one
 practice task before any scored round.
 
