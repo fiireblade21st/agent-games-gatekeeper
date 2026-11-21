@@ -67,7 +67,7 @@ function post(bodyObj, { sign = true } = {}) {
     const req = http.request({ host: '127.0.0.1', port: PORT, path: '/agent', method: 'POST', headers }, (res) => {
       let data = '';
       res.on('data', (c) => { data += c; });
-      res.on('end', () => resolve({ status: res.statusCode, body: data }));
+      res.on('end', () => resolve({ status: res.statusCode, body: data, headers: res.headers }));
     });
     req.on('error', reject);
     req.write(body);
@@ -84,12 +84,29 @@ function postRaw(body, { sign = true } = {}) {
     const req = http.request({ host: '127.0.0.1', port: PORT, path: '/agent', method: 'POST', headers }, (res) => {
       let data = '';
       res.on('data', (c) => { data += c; });
-      res.on('end', () => resolve({ status: res.statusCode, body: data }));
+      res.on('end', () => resolve({ status: res.statusCode, body: data, headers: res.headers }));
     });
     req.on('error', reject);
     req.write(body);
     req.end();
   });
+}
+
+function get() {
+  return new Promise((resolve, reject) => {
+    const req = http.request({ host: '127.0.0.1', port: PORT, path: '/agent', method: 'GET' }, (res) => {
+      let data = '';
+      res.on('data', (c) => { data += c; });
+      res.on('end', () => resolve({ status: res.statusCode, body: data, headers: res.headers }));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+function validSig(r) {
+  return r.headers
+    && r.headers['x-agent-games-signature'] === crypto.createHmac('sha256', SECRET).update(r.body).digest('hex');
 }
 
 async function main() {
@@ -135,9 +152,9 @@ async function main() {
         okProof = json && json.proof === null && json.public_signals === null;
         proofDetail = 'proof=null as expected';
       }
-      const pass = okStatus && okDecision && okProof;
+      const pass = okStatus && okDecision && okProof && validSig(r);
       if (!pass) failures += 1;
-      console.log(`${pass ? 'PASS' : 'FAIL'}  ${c.name}  [http=${r.status} ${proofDetail}]`);
+      console.log(`${pass ? 'PASS' : 'FAIL'}  ${c.name}  [http=${r.status} ${proofDetail} sig=${validSig(r)}]`);
       if (!pass) console.log('      response:', r.body.slice(0, 500));
     }
 
@@ -147,19 +164,27 @@ async function main() {
     if (!pass5) failures += 1;
     console.log(`${pass5 ? 'PASS' : 'FAIL'}  5 UNSIGNED -> 401 fail-closed  [http=${r5.status}]`);
 
-    // 7. Signed empty body (platform preflight ping) must 200, not 400.
+    // 7. Signed empty body (platform preflight ping) must 200 with the exact
+    // signed protocol-v1 JSON, not 400.
     const r7 = await postRaw('');
-    const pass7 = r7.status === 200 && r7.body.includes('"preflight":true');
+    const pass7 = r7.status === 200 && r7.body === '{"ok":true,"protocolVersion":"v1"}' && validSig(r7);
     if (!pass7) failures += 1;
-    console.log(`${pass7 ? 'PASS' : 'FAIL'}  7 SIGNED EMPTY BODY (preflight) -> 200 preflight:true  [http=${r7.status}]`);
+    console.log(`${pass7 ? 'PASS' : 'FAIL'}  7 SIGNED EMPTY BODY (preflight) -> 200 signed {"ok":true,"protocolVersion":"v1"}  [http=${r7.status} sig=${validSig(r7)}]`);
     if (!pass7) console.log('      response:', r7.body.slice(0, 300));
 
-    // 8. Signed {} (preflight without task fields) must 200, not 400.
+    // 8. Signed {} (preflight without task fields) must 200 the same way.
     const r8 = await postRaw('{}');
-    const pass8 = r8.status === 200 && r8.body.includes('"preflight":true');
+    const pass8 = r8.status === 200 && r8.body === '{"ok":true,"protocolVersion":"v1"}' && validSig(r8);
     if (!pass8) failures += 1;
-    console.log(`${pass8 ? 'PASS' : 'FAIL'}  8 SIGNED {} (preflight) -> 200 preflight:true  [http=${r8.status}]`);
+    console.log(`${pass8 ? 'PASS' : 'FAIL'}  8 SIGNED {} (preflight) -> 200 signed {"ok":true,"protocolVersion":"v1"}  [http=${r8.status} sig=${validSig(r8)}]`);
     if (!pass8) console.log('      response:', r8.body.slice(0, 300));
+
+    // 9. GET /agent health must return the exact signed protocol-v1 JSON.
+    const r9 = await get();
+    const pass9 = r9.status === 200 && r9.body === '{"ok":true,"protocolVersion":"v1"}' && validSig(r9);
+    if (!pass9) failures += 1;
+    console.log(`${pass9 ? 'PASS' : 'FAIL'}  9 GET /agent -> 200 signed {"ok":true,"protocolVersion":"v1"}  [http=${r9.status} sig=${validSig(r9)}]`);
+    if (!pass9) console.log('      response:', r9.body.slice(0, 300));
 
     // 6. No-secret server must 401 everything (spawn a second server w/o env).
     const server2 = spawn(process.execPath, ['server.js'], {

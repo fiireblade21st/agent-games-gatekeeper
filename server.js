@@ -9,19 +9,28 @@
 //   node test-local.js   # starts this server, runs the signed curl cases
 
 const http = require('http');
-const { handleTask, verifyHmac, getHmacSecret } = require('./lib/gatekeeper');
+const { handleTask, verifyHmac, signResponse, getHmacSecret } = require('./lib/gatekeeper');
 
 const PORT = parseInt(process.env.PORT || '8787', 10);
 const HOST = '127.0.0.1';
 
 const server = http.createServer((req, res) => {
-  const send = (code, obj) => {
-    res.writeHead(code, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(obj));
+  // Every response is signed with the HMAC secret when one is configured
+  // (x-agent-games-signature over the exact response bytes, mirroring the
+  // encoding the platform used for its request signature). The platform
+  // preflight requires a signed protocol-v1 response; unsigned responses
+  // fail the protocol check even with HTTP 200.
+  const send = (code, obj, encoding) => {
+    const body = JSON.stringify(obj);
+    const sig = signResponse(Buffer.from(body, 'utf8'), encoding);
+    const headers = { 'Content-Type': 'application/json' };
+    if (sig) headers['x-agent-games-signature'] = sig;
+    res.writeHead(code, headers);
+    res.end(body);
   };
 
   if (req.method === 'GET' && req.url === '/agent') {
-    return send(200, { ok: true, protocolVersion: 'v1', mode: 'local' });
+    return send(200, { ok: true, protocolVersion: 'v1' });
   }
   if (req.method !== 'POST' || req.url !== '/agent') {
     return send(404, { error: 'not found' });
@@ -67,13 +76,13 @@ const server = http.createServer((req, res) => {
           bodyLen: body.length,
         }));
       } catch { /* logging must never break the response */ }
-      return send(200, { ok: true, protocolVersion: 'v1', mode: 'local', preflight: true });
+      return send(200, { ok: true, protocolVersion: 'v1' }, check.encoding);
     }
 
     try {
-      return send(200, await handleTask(envelope));
+      return send(200, await handleTask(envelope), check.encoding);
     } catch (e) {
-      return send(e.status || 500, { error: e.message || 'internal error' });
+      return send(e.status || 500, { error: e.message || 'internal error' }, check.encoding);
     }
   });
 });

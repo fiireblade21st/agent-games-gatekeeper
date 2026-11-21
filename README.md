@@ -120,11 +120,12 @@ practice task before any scored round.
    accepts a proofless REJECT for a replay is **unverified** — the
    platform may handle replays outside the proof, or the agent may have
    to answer differently. This is a circuit limitation, not a server bug.
-2. **HMAC is enforced, but the header encoding is a guess.** The field
+2. **HMAC is enforced, and responses are signed.** The field
    guide says the signature is HMAC-SHA256 over the raw body; it does not
-   pin down hex vs base64, so this code accepts both. If the platform
-   sends something else (e.g. `sha256=…` prefix), verification will 401
-   and the preflight will reveal it.
+   pin down hex vs base64, so this code accepts both for requests and
+   mirrors the request's encoding when signing responses. Every response
+   carries `x-agent-games-signature` when a secret is configured, and the
+   preflight/health body is exactly `{"ok":true,"protocolVersion":"v1"}`.
 3. **Local encodings are conventions, not platform-verified.**
    `taskId` = sha256(task_id) mod BN254 prime; vkHash values are reduced
    mod p (the published vkHash exceeds the field prime); the sample
