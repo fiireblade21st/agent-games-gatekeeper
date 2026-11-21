@@ -64,11 +64,17 @@ const server = http.createServer((req, res) => {
     if (body.length > 0) {
       try { envelope = JSON.parse(body); parsed = true; } catch { parsed = false; }
     }
-    const t = envelope && typeof envelope === 'object' ? (envelope.input || envelope.task || envelope) : null;
-    // A task is recognized by task_id OR taskId (the platform may use
-    // camelCase); anything else signed is the preflight connectivity check.
+    const envObj = envelope && typeof envelope === 'object' ? envelope : null;
+    const inner = envObj ? (envObj.input || envObj.task || envObj) : null;
+    // A task is recognized by task_id OR taskId, which may live at the
+    // envelope top level (real platform shape: task_id top-level, fields
+    // inside `input`) OR inside the nested task object. Anything else
+    // signed is the preflight connectivity check.
     const hasId = (v) => v !== undefined && v !== null && v !== '';
-    const looksLikeTask = !!(t && (hasId(t.task_id) || hasId(t.taskId)));
+    const looksLikeTask = !!(envObj && (
+      hasId(envObj.task_id) || hasId(envObj.taskId) ||
+      (inner && (hasId(inner.task_id) || hasId(inner.taskId)))
+    ));
     if (!looksLikeTask) {
       // Diagnostic log: keys only, never values and never headers (the
       // signature header must never be logged).
