@@ -186,6 +186,28 @@ async function main() {
     console.log(`${pass9 ? 'PASS' : 'FAIL'}  9 GET /agent -> 200 signed {"ok":true,"protocolVersion":"v1"}  [http=${r9.status} sig=${validSig(r9)}]`);
     if (!pass9) console.log('      response:', r9.body.slice(0, 300));
 
+    // 10. camelCase envelope (platform field naming) must decide like case 1.
+    const r10 = await post({
+      taskId: 'gk_24_9d10', minimum: '1000', publicBalance: '1460',
+      expiryBlock: 19842201, currentBlock: 19832000, recipient: '12345',
+      conditionRecipient: '12345', amount: '500', maxTransfer: '1000',
+      proof_tx: 'tx_camel_010',
+    });
+    let json10 = null;
+    try { json10 = JSON.parse(r10.body); } catch { /* fall through */ }
+    const pass10 = r10.status === 200 && json10 && json10.decision === 'APPROVE'
+      && json10.reason_code === 'VALID_CONDITION' && validSig(r10);
+    if (!pass10) failures += 1;
+    console.log(`${pass10 ? 'PASS' : 'FAIL'}  10 CAMELCASE ENVELOPE -> APPROVE / VALID_CONDITION  [http=${r10.status} sig=${validSig(r10)}]`);
+    if (!pass10) console.log('      response:', r10.body.slice(0, 300));
+
+    // 11. Signed envelope with task_id but missing other fields must still 400.
+    const r11 = await post({ task_id: 'gk_24_9d11' });
+    const pass11 = r11.status === 400 && r11.body.includes('missing field');
+    if (!pass11) failures += 1;
+    console.log(`${pass11 ? 'PASS' : 'FAIL'}  11 TASK_ID ONLY -> 400 missing field  [http=${r11.status}]`);
+    if (!pass11) console.log('      response:', r11.body.slice(0, 300));
+
     // 6. No-secret server must 401 everything (spawn a second server w/o env).
     const server2 = spawn(process.execPath, ['server.js'], {
       cwd: __dirname,

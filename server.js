@@ -65,7 +65,10 @@ const server = http.createServer((req, res) => {
       try { envelope = JSON.parse(body); parsed = true; } catch { parsed = false; }
     }
     const t = envelope && typeof envelope === 'object' ? (envelope.task || envelope) : null;
-    const looksLikeTask = !!(t && t.task_id !== undefined && t.task_id !== null && t.task_id !== '');
+    // A task is recognized by task_id OR taskId (the platform may use
+    // camelCase); anything else signed is the preflight connectivity check.
+    const hasId = (v) => v !== undefined && v !== null && v !== '';
+    const looksLikeTask = !!(t && (hasId(t.task_id) || hasId(t.taskId)));
     if (!looksLikeTask) {
       // Diagnostic log: keys only, never values and never headers (the
       // signature header must never be logged).
@@ -82,6 +85,17 @@ const server = http.createServer((req, res) => {
     try {
       return send(200, await handleTask(envelope), check.encoding);
     } catch (e) {
+      // Diagnostic log for task failures: which field is missing + the
+      // envelope's keys (keys only, never values, never headers), so a
+      // field-naming mismatch can be fixed from the log.
+      try {
+        const envObj = envelope && typeof envelope === 'object' ? envelope : null;
+        console.log(JSON.stringify({
+          route: 'POST /agent', error: String(e.message || e), status: e.status || 500,
+          keys: envObj ? Object.keys(envObj) : [],
+          taskKeys: envObj && envObj.task && typeof envObj.task === 'object' ? Object.keys(envObj.task) : [],
+        }));
+      } catch { /* logging must never break the response */ }
       return send(e.status || 500, { error: e.message || 'internal error' }, check.encoding);
     }
   });
